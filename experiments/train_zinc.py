@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import time
 import copy
 import argparse
 import numpy as np
@@ -14,7 +15,7 @@ from torch_geometric import datasets
 import torch_geometric.utils as utils
 from sat.models import GraphTransformer
 from sat.data import GraphDataset
-from sat.utils import count_parameters
+from sat.utils import count_parameters, print_gpu_utilization, seed_everything, results_to_file
 from sat.position_encoding import POSENCODINGS
 from sat.gnn_layers import GNN_TYPES
 from timeit import default_timer as timer
@@ -51,12 +52,17 @@ def load_args():
     parser.add_argument('--gnn-type', type=str, default='graphsage',
                         choices=GNN_TYPES,
                         help="GNN structure extractor type")
-    parser.add_argument('--k-hop', type=int, default=2, 
-        help="Number of hops to use when extracting subgraphs around each node")
+    parser.add_argument('--k-hop', type=int, default=2,
+                        help="Number of hops to use when extracting subgraphs around each node")
     parser.add_argument('--global-pool', type=str, default='mean', choices=['mean', 'cls', 'add'],
                         help='global pooling method')
-    parser.add_argument('--se', type=str, default="gnn", 
-            help='Extractor type: khopgnn, or gnn')
+    parser.add_argument('--se', type=str, default="gnn",
+                        help='Extractor type: khopgnn, or gnn')
+    # Some Critical Params (memory, params)
+    parser.add_argument('--total_params', type=int, default=0)
+    parser.add_argument('--memory_usage', type=int, default=0)
+    parser.add_argument('--model_dim', type=int, default=0)
+    parser.add_argument('--device_id', type=int, default=0)
 
     args = parser.parse_args()
     args.use_cuda = torch.cuda.is_available()
@@ -125,7 +131,6 @@ def train_epoch(model, loader, criterion, optimizer, lr_scheduler, epoch, use_cu
 
     tic = timer()
     for i, data in enumerate(loader):
-        #print(data)
         size = len(data.y)
         if args.warmup is not None:
             iteration = epoch * len(loader) + i
@@ -146,14 +151,14 @@ def train_epoch(model, loader, criterion, optimizer, lr_scheduler, epoch, use_cu
         loss = criterion(output, data.y)
         loss.backward()
         optimizer.step()
-        
+
         running_loss += loss.item() * size
 
     toc = timer()
     n_sample = len(loader.dataset)
     epoch_loss = running_loss / n_sample
     print('Train loss: {:.4f} time: {:.2f}s'.format(
-          epoch_loss, toc - tic))
+        epoch_loss, toc - tic))
     return epoch_loss
 
 
@@ -184,35 +189,32 @@ def eval_epoch(model, loader, criterion, use_cuda=False, split='Val'):
     epoch_mae = mae_loss / n_sample
     epoch_mse = mse_loss / n_sample
     print('{} loss: {:.4f} MSE loss: {:.4f} MAE loss: {:.4f} time: {:.2f}s'.format(
-          split, epoch_loss, epoch_mse, epoch_mae, toc - tic))
+        split, epoch_loss, epoch_mse, epoch_mae, toc - tic))
     return epoch_mae, epoch_mse
 
 
 def main():
     global args
     args = load_args()
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
-    print(args)
-    data_path = '../datasets/ZINC'
+    seed_everything(args.seed)
+    # print(args)
+    data_path = '../../data/ZINC'
     # number of node attributes for ZINC dataset
     n_tags = 28
     num_edge_features = 4
 
     train_dset = GraphDataset(datasets.ZINC(data_path, subset=True,
-        split='train'), degree=True, k_hop=args.k_hop, se=args.se,
-        use_subgraph_edge_attr=args.use_edge_attr)
+                                            split='train'), degree=True, k_hop=args.k_hop, se=args.se,
+                              use_subgraph_edge_attr=args.use_edge_attr)
 
     input_size = n_tags
     train_loader = DataLoader(train_dset, batch_size=args.batch_size,
-            shuffle=True)
-
-    print(train_dset[0])
+                              shuffle=True)
 
     val_dset = GraphDataset(datasets.ZINC(data_path, subset=True,
-        split='val'), degree=True, k_hop=args.k_hop, se=args.se,
-        use_subgraph_edge_attr=args.use_edge_attr)
-    
+                                          split='val'), degree=True, k_hop=args.k_hop, se=args.se,
+                            use_subgraph_edge_attr=args.use_edge_attr)
+
     val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=False)
 
     abs_pe_encoder = None
@@ -230,7 +232,7 @@ def main():
     model = GraphTransformer(in_size=input_size,
                              num_class=1,
                              d_model=args.dim_hidden,
-                             dim_feedforward=2*args.dim_hidden,
+                             dim_feedforward=2 * args.dim_hidden,
                              dropout=args.dropout,
                              num_heads=args.num_heads,
                              num_layers=args.num_layers,
@@ -244,11 +246,11 @@ def main():
                              k_hop=args.k_hop,
                              se=args.se,
                              deg=deg,
-                             global_pool=args.global_pool) 
+                             global_pool=args.global_pool)
 
     if args.use_cuda:
         model.cuda()
-    print("Total number of parameters: {}".format(count_parameters(model)))
+    args.total_params = count_parameters(model)
 
     criterion = nn.L1Loss()
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -261,6 +263,7 @@ def main():
     else:
         lr_steps = (args.lr - 1e-6) / args.warmup
         decay_factor = args.lr * args.warmup ** .5
+
         def lr_scheduler(s):
             if s < args.warmup:
                 lr = 1e-6 + s * lr_steps
@@ -269,12 +272,12 @@ def main():
             return lr
 
     test_dset = GraphDataset(datasets.ZINC(data_path, subset=True,
-        split='test'), degree=True, k_hop=args.k_hop, se=args.se,
-        use_subgraph_edge_attr=args.use_edge_attr)
+                                           split='test'), degree=True, k_hop=args.k_hop, se=args.se,
+                             use_subgraph_edge_attr=args.use_edge_attr)
 
     test_loader = DataLoader(test_dset, batch_size=args.batch_size, shuffle=False)
-    
-    #FIXME
+
+    # FIXME
     if abs_pe_encoder is not None:
         abs_pe_encoder.apply_to(test_dset)
 
@@ -283,12 +286,19 @@ def main():
     best_model = None
     best_epoch = 0
     logs = defaultdict(list)
+    t0 = time.time()
+    per_epoch_time = []
     start_time = timer()
     for epoch in range(args.epochs):
+        start = time.time()
         print("Epoch {}/{}, LR {:.6f}".format(epoch + 1, args.epochs, optimizer.param_groups[0]['lr']))
         train_loss = train_epoch(model, train_loader, criterion, optimizer, lr_scheduler, epoch, args.use_cuda)
-        val_loss,_ = eval_epoch(model, val_loader, criterion, args.use_cuda, split='Val')
-        test_loss,_ = eval_epoch(model, test_loader, criterion, args.use_cuda, split='Test')
+        val_loss, _ = eval_epoch(model, val_loader, criterion, args.use_cuda, split='Val')
+        test_loss, _ = eval_epoch(model, test_loader, criterion, args.use_cuda, split='Test')
+        # memory usage
+        if epoch == 1:
+            mem = utils.print_gpu_utilization(args.device_id)
+            args.memory_usage = mem
 
         if args.warmup is None:
             lr_scheduler.step(val_loss)
@@ -300,17 +310,18 @@ def main():
             best_val_loss = val_loss
             best_epoch = epoch
             best_weights = copy.deepcopy(model.state_dict())
+        per_epoch_time.append(time.time() - start)
 
     total_time = timer() - start_time
+    total_time_taken = time.time() - t0
+    avg_time_epoch = np.mean(per_epoch_time)
     print("best epoch: {} best val loss: {:.4f}".format(best_epoch, best_val_loss))
     model.load_state_dict(best_weights)
 
-    print()
     print("Testing...")
     test_loss, test_mse_loss = eval_epoch(model, test_loader, criterion, args.use_cuda, split='Test')
 
     print("test MAE loss {:.4f}".format(test_loss))
-    print(args)
 
     if args.save_logs:
         logs = pd.DataFrame.from_dict(logs)
@@ -327,9 +338,23 @@ def main():
                        header=['value'], index_label='name')
         torch.save(
             {'args': args,
-            'state_dict': best_weights},
+             'state_dict': best_weights},
             args.outdir + '/model.pth')
+    return test_loss, test_mse_loss, best_val_loss, total_time_taken, avg_time_epoch
 
 
 if __name__ == "__main__":
-    main()
+    vals, test_maes, test_mses, total_time_list, avg_time_list = [], [], [], [], []
+    for run_id in range(10):
+        val, test_mae, test_mse, total_time, avg_time = main()
+        vals.append(val)
+        test_maes.append(test_mae)
+        test_mses.append(test_mse)
+        total_time_list.append(total_time)
+        avg_time_list.append(avg_time)
+
+    args = load_args()
+    results_to_file(args, np.mean(test_maes), np.std(test_maes),
+                    np.mean(test_mses), np.std(test_mses),
+                    np.mean(total_time_list), np.std(total_time_list),
+                    np.mean(avg_time_list), np.std(avg_time_list))

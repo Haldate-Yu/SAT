@@ -3,6 +3,7 @@ from collections import Counter
 import numpy as np
 import torch
 
+
 class ASTNodeEncoder(torch.nn.Module):
     '''
         Input:
@@ -11,6 +12,7 @@ class ASTNodeEncoder(torch.nn.Module):
         Output:
             emb_dim-dimensional vector
     '''
+
     def __init__(self, emb_dim, num_nodetypes, num_nodeattributes, max_depth):
         super(ASTNodeEncoder, self).__init__()
 
@@ -20,11 +22,9 @@ class ASTNodeEncoder(torch.nn.Module):
         self.attribute_encoder = torch.nn.Embedding(num_nodeattributes, emb_dim)
         self.depth_encoder = torch.nn.Embedding(self.max_depth + 1, emb_dim)
 
-
     def forward(self, x, depth):
         depth[depth > self.max_depth] = self.max_depth
-        return self.type_encoder(x[:,0]) + self.attribute_encoder(x[:,1]) + self.depth_encoder(depth)
-
+        return self.type_encoder(x[:, 0]) + self.attribute_encoder(x[:, 1]) + self.depth_encoder(depth)
 
 
 def get_vocab_mapping(seq_list, num_vocab):
@@ -53,10 +53,10 @@ def get_vocab_mapping(seq_list, num_vocab):
                 vocab_list.append(w)
 
     cnt_list = np.array([vocab_cnt[w] for w in vocab_list])
-    topvocab = np.argsort(-cnt_list, kind = 'stable')[:num_vocab]
+    topvocab = np.argsort(-cnt_list, kind='stable')[:num_vocab]
 
     print('Coverage of top {} vocabulary:'.format(num_vocab))
-    print(float(np.sum(cnt_list[topvocab]))/np.sum(cnt_list))
+    print(float(np.sum(cnt_list[topvocab])) / np.sum(cnt_list))
 
     vocab2idx = {vocab_list[vocab_idx]: idx for idx, vocab_idx in enumerate(topvocab)}
     idx2vocab = [vocab_list[vocab_idx] for vocab_idx in topvocab]
@@ -73,13 +73,14 @@ def get_vocab_mapping(seq_list, num_vocab):
 
     # test the correspondence between vocab2idx and idx2vocab
     for idx, vocab in enumerate(idx2vocab):
-        assert(idx == vocab2idx[vocab])
+        assert (idx == vocab2idx[vocab])
 
     # test that the idx of '__EOS__' is len(idx2vocab) - 1.
     # This fact will be used in decode_arr_to_seq, when finding __EOS__
-    assert(vocab2idx['__EOS__'] == len(idx2vocab) - 1)
+    assert (vocab2idx['__EOS__'] == len(idx2vocab) - 1)
 
     return vocab2idx, idx2vocab
+
 
 def augment_edge(data):
     '''
@@ -98,9 +99,9 @@ def augment_edge(data):
     edge_attr_ast = torch.zeros((edge_index_ast.size(1), 2))
 
     ##### Inverse AST edge
-    edge_index_ast_inverse = torch.stack([edge_index_ast[1], edge_index_ast[0]], dim = 0)
-    edge_attr_ast_inverse = torch.cat([torch.zeros(edge_index_ast_inverse.size(1), 1), torch.ones(edge_index_ast_inverse.size(1), 1)], dim = 1)
-
+    edge_index_ast_inverse = torch.stack([edge_index_ast[1], edge_index_ast[0]], dim=0)
+    edge_attr_ast_inverse = torch.cat(
+        [torch.zeros(edge_index_ast_inverse.size(1), 1), torch.ones(edge_index_ast_inverse.size(1), 1)], dim=1)
 
     ##### Next-token edge
 
@@ -109,7 +110,7 @@ def augment_edge(data):
     # attributed_node_idx_in_dfs_order = attributed_node_idx[torch.argsort(data.node_dfs_order[attributed_node_idx].view(-1,))]
 
     ## Since the nodes are already sorted in dfs ordering in our case, we can just do the following.
-    attributed_node_idx_in_dfs_order = torch.where(data.node_is_attributed.view(-1,) == 1)[0]
+    attributed_node_idx_in_dfs_order = torch.where(data.node_is_attributed.view(-1, ) == 1)[0]
 
     ## build next token edge
     # Given: attributed_node_idx_in_dfs_order
@@ -117,19 +118,22 @@ def augment_edge(data):
     # Output:
     #    [[1, 3, 4, 5, 8, 9]
     #     [3, 4, 5, 8, 9, 12]
-    edge_index_nextoken = torch.stack([attributed_node_idx_in_dfs_order[:-1], attributed_node_idx_in_dfs_order[1:]], dim = 0)
-    edge_attr_nextoken = torch.cat([torch.ones(edge_index_nextoken.size(1), 1), torch.zeros(edge_index_nextoken.size(1), 1)], dim = 1)
-
+    edge_index_nextoken = torch.stack([attributed_node_idx_in_dfs_order[:-1], attributed_node_idx_in_dfs_order[1:]],
+                                      dim=0)
+    edge_attr_nextoken = torch.cat(
+        [torch.ones(edge_index_nextoken.size(1), 1), torch.zeros(edge_index_nextoken.size(1), 1)], dim=1)
 
     ##### Inverse next-token edge
-    edge_index_nextoken_inverse = torch.stack([edge_index_nextoken[1], edge_index_nextoken[0]], dim = 0)
+    edge_index_nextoken_inverse = torch.stack([edge_index_nextoken[1], edge_index_nextoken[0]], dim=0)
     edge_attr_nextoken_inverse = torch.ones((edge_index_nextoken.size(1), 2))
 
-
-    data.edge_index = torch.cat([edge_index_ast, edge_index_ast_inverse, edge_index_nextoken, edge_index_nextoken_inverse], dim = 1)
-    data.edge_attr = torch.cat([edge_attr_ast,   edge_attr_ast_inverse, edge_attr_nextoken,  edge_attr_nextoken_inverse], dim = 0)
+    data.edge_index = torch.cat(
+        [edge_index_ast, edge_index_ast_inverse, edge_index_nextoken, edge_index_nextoken_inverse], dim=1)
+    data.edge_attr = torch.cat([edge_attr_ast, edge_attr_ast_inverse, edge_attr_nextoken, edge_attr_nextoken_inverse],
+                               dim=0)
 
     return data
+
 
 def encode_y_to_arr(data, vocab2idx, max_seq_len):
     '''
@@ -140,13 +144,14 @@ def encode_y_to_arr(data, vocab2idx, max_seq_len):
 
     # PyG >= 1.5.0
     seq = data.y
-    
+
     # PyG = 1.4.3
     # seq = data.y[0]
 
     data.y_arr = encode_seq_to_arr(seq, vocab2idx, max_seq_len)
 
     return data
+
 
 def encode_seq_to_arr(seq, vocab2idx, max_seq_len):
     '''
@@ -156,7 +161,8 @@ def encode_seq_to_arr(seq, vocab2idx, max_seq_len):
     '''
 
     augmented_seq = seq[:max_seq_len] + ['__EOS__'] * max(0, max_seq_len - len(seq))
-    return torch.tensor([[vocab2idx[w] if w in vocab2idx else vocab2idx['__UNK__'] for w in augmented_seq]], dtype = torch.long)
+    return torch.tensor([[vocab2idx[w] if w in vocab2idx else vocab2idx['__UNK__'] for w in augmented_seq]],
+                        dtype=torch.long)
 
 
 def decode_arr_to_seq(arr, idx2vocab):
@@ -165,10 +171,10 @@ def decode_arr_to_seq(arr, idx2vocab):
         Output: a sequence of words.
     '''
 
-
-    eos_idx_list = torch.nonzero(arr == len(idx2vocab) - 1, as_tuple=False) # find the position of __EOS__ (the last vocab in idx2vocab)
+    eos_idx_list = torch.nonzero(arr == len(idx2vocab) - 1,
+                                 as_tuple=False)  # find the position of __EOS__ (the last vocab in idx2vocab)
     if len(eos_idx_list) > 0:
-        clippted_arr = arr[: torch.min(eos_idx_list)] # find the smallest __EOS__
+        clippted_arr = arr[: torch.min(eos_idx_list)]  # find the smallest __EOS__
     else:
         clippted_arr = arr
 

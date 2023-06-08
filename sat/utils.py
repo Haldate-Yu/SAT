@@ -1,15 +1,92 @@
 # -*- coding: utf-8 -*-
 from typing import Optional
+import os
+import csv
+import random
 import torch
 from torch import Tensor
 from torch_scatter import scatter, segment_csr, gather_csr
 from torch_geometric.utils.num_nodes import maybe_num_nodes
-from scipy.sparse import csr_matrix,lil_matrix
+from scipy.sparse import csr_matrix, lil_matrix
 import numpy as np
+from pynvml import *
 
 
 def count_parameters(model):
     return sum([p.numel() for p in model.parameters() if p.requires_grad])
+
+
+def print_gpu_utilization(device_index):
+    nvmlInit()
+    handle = nvmlDeviceGetHandleByIndex(device_index)
+    info = nvmlDeviceGetMemoryInfo(handle)
+    print(f"GPU memory occupied: {info.used // 1024 ** 2} MB.")
+    return info.used // 1024 ** 2
+
+
+def seed_everything(seed):
+    r"""Sets the seed for generating random numbers in PyTorch, numpy and
+        Python.
+
+        Args:
+            seed (int): The desired seed.
+        """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def results_to_file(args, test_acc, test_std,
+                    test_mse, test_mse_std,
+                    total_time, total_time_std,
+                    avg_time, avg_time_std):
+    if not os.path.exists('./results/{}'.format(args.dataset)):
+        print("=" * 20)
+        print("Creating Results File !!!")
+
+        os.makedirs('./results/{}'.format(args.dataset))
+
+    filename = "./results/{}/result_batchsize{}_layers{}.csv".format(
+        args.dataset, args.batch_size, args.num_layers)
+
+    headerList = ["Method", "N_Heads", "Batch_Size",
+                  "Encoder_Layers", "Hidden_Dims",
+                  "Model_Params", "Memory_Usage(MB)",
+                  "::::::::",
+                  "Abs_PE", "GNN_Extractor",
+                  "::::::::",
+                  "test_acc/mae", "test_acc/mae_std",
+                  "test_mse", "test_mse_std",
+                  "total_time", "total_time_std",
+                  "avg_time", "avg_time_std"]
+
+    with open(filename, "a+") as f:
+
+        # reader = csv.reader(f)
+        # row1 = next(reader)
+        f.seek(0)
+        header = f.read(6)
+        if header != "Method":
+            dw = csv.DictWriter(f, delimiter=',',
+                                fieldnames=headerList)
+            dw.writeheader()
+
+        line = "{}, {}, {}, {}, {}, {}, {}, :::::::::, " \
+               "{}, {}, :::::::::, " \
+               "{:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}\n".format(
+            args.model_type, args.num_heads, args.batch_size,
+            args.num_layers, args.dim_hidden,
+            args.total_params, args.memory_usage,
+            args.abs_pe, args.se,
+            test_acc, test_std,
+            test_mse, test_mse_std,
+            total_time, total_time_std,
+            avg_time, avg_time_std
+        )
+        f.write(line)
+
 
 def dense_to_sparse_tensor(matrix):
     rows, columns = torch.where(matrix > 0)
@@ -75,6 +152,7 @@ def pad_batch(x, ptr, return_mask=False):
     if return_mask:
         return new_x, padding_mask
     return new_x
+
 
 def unpad_batch(x, ptr):
     bsz, n, d = x.shape

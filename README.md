@@ -168,3 +168,10 @@ This will generate the following image, the same as the Figure 4 in our paper:
 
 [1]: https://arxiv.org/abs/2202.03036
 [2]: https://conda.io/miniconda.html
+
+## 如何修改
+
+由于源代码中没有设定cuda device，因此在运行时需要额外设定此参数
+CUDA_VISIBLE_DEVICES=gpu_ids python3 train.py
+
+关于TUDataset
