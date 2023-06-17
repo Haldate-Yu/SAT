@@ -171,29 +171,25 @@ def eval_epoch(model, loader, criterion, use_cuda=False, split='Val'):
     model.eval()
 
     running_loss = 0.0
-    y_pred = []
-    y_true = []
 
     tic = timer()
     correct = 0
     with torch.no_grad():
         for step, batch in enumerate(tqdm(loader, desc="Eval")):
+            size = len(batch.y)
             batch = batch.cuda()
 
             pred = model(batch)
+            loss = criterion(pred, batch.y.squeeze())
             pred = pred.max(dim=1)[1]
             correct += pred.eq(batch.y).sum().item()
+            running_loss += loss.item() * size
 
     toc = timer()
-    y_pred = torch.cat(y_pred).numpy()
-    y_true = torch.cat(y_true).numpy()
 
     n_sample = len(loader.dataset)
     epoch_loss = running_loss / n_sample
-    # for TUs
-    # evaluator = Evaluator(name=args.dataset)
-    # score = evaluator.eval({'y_pred': y_pred,
-    #                         'y_true': y_true})['acc']
+
     score = correct / len(loader.dataset)
     print('{} loss: {:.4f} score: {:.4f} time: {:.2f}s'.format(
         split, epoch_loss, score, toc - tic))
@@ -210,22 +206,24 @@ def main():
 
     if args.not_extract_node_feature:
         transform = add_zeros
-        input_size = 1
     else:
         from functools import partial
         transform = partial(extract_node_feature, reduce=args.aggr)
-        input_size = num_edge_features
 
     dataset = TUDataset(name=args.dataset, root=data_path,
                         transform=transform)
     dataset = TUUtil.preprocess(dataset)
-    print("Loading before process: {}".format(dataset))
+
+    if args.not_extract_node_feature:
+        input_size = dataset.num_features
+    else:
+        input_size = num_edge_features
+
     split_idx = dataset.get_idx_split()
 
     train_dset = GraphDataset(dataset[split_idx['train']], degree=True,
                               k_hop=args.k_hop, se=args.se, use_subgraph_edge_attr=args.use_edge_attr,
                               return_complete_index=False)
-    print("Loading after process: {}".format(train_dset))
 
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True)
 
@@ -267,7 +265,8 @@ def main():
                              deg=deg,
                              in_embed=False,
                              edge_embed=False,
-                             global_pool=args.global_pool)
+                             global_pool=args.global_pool,
+                             run_TUs=False)
     if args.use_cuda:
         model.cuda()
     args.total_params = count_parameters(model)

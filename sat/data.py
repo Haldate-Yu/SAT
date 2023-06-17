@@ -171,9 +171,17 @@ class NormalizedDegree(object):
     def __call__(self, data):
         deg = degree(data.edge_index[0], dtype=torch.float)
         deg = (deg - self.mean) / self.std
+        # for SAT
         data.x = deg.view(-1, 1)
         return data
 
+class FeatureUnsqueeze(object):
+    def __init__(self):
+        pass
+
+    def __call__(self, data):
+        data.x = data.x.unsqueeze(-1).float()
+        return data
 
 class TUUtil:
     @staticmethod
@@ -186,11 +194,18 @@ class TUUtil:
                 max_degree = max(max_degree, degs[-1].max().item())
 
             if max_degree < 1000:
-                dataset.transform = T.OneHotDegree(max_degree)
+                dataset.transform = T.Compose([
+                    T.OneHotDegree(max_degree),
+                    # FeatureUnsqueeze(),
+                ])
             else:
                 deg = torch.cat(degs, dim=0).to(torch.float)
                 mean, std = deg.mean().item(), deg.std().item()
-                dataset.transform = NormalizedDegree(mean, std)
+                dataset.transform = T.Compose([
+                    NormalizedDegree(mean, std),
+                    # FeatureUnsqueeze(),
+                ])
+
         num_tasks = dataset.num_classes
 
         num_features = dataset.num_features
@@ -206,8 +221,8 @@ class TUUtil:
         dataset = Dataset({"train": training_set, "valid": validation_set, "test": test_set})
         dataset.eval_metric = "acc"
         dataset.task_type = "classification"
-        dataset.get_idx_split = lambda: {"train_mask": "train", "valid_mask": "valid", "test_mask": "test"}
+        dataset.get_idx_split = lambda: {"train": "train", "valid": "valid", "test": "test"}
         dataset.num_classes = num_tasks
-        dataset.num_classes = num_features
+        dataset.num_features = num_features
 
         return dataset
