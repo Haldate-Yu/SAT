@@ -206,7 +206,7 @@ class TUUtil:
         dataset = Dataset({"train": training_set, "valid": validation_set, "test": test_set})
         dataset.eval_metric = "acc"
         dataset.task_type = "classification"
-        dataset.get_idx_split = lambda: {"train": "train", "valid": "valid", "test": "test"}
+        dataset.get_idx_split = lambda: {"train_mask": "train", "valid_mask": "valid", "test_mask": "test"}
         dataset.num_classes = num_tasks
         dataset.num_classes = num_features
 
