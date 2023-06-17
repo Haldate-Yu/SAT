@@ -175,3 +175,4 @@ This will generate the following image, the same as the Figure 4 in our paper:
 CUDA_VISIBLE_DEVICES=gpu_ids python3 train.py
 
 关于TUDataset
+可以看出在experiments/train_zinc.py中，train_epoch等结构和PatchGT等相当类似，估计运行方式大差不差，只需额外写run_TU.py；

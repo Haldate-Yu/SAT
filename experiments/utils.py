@@ -1,7 +1,40 @@
-import torch
+import os
+import csv
+import random
 from collections import Counter
 import numpy as np
 import torch
+from pynvml import *
+
+
+def num_total_parameters(model):
+    return sum(p.numel() for p in model.parameters())
+
+
+def num_trainable_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def print_gpu_utilization(device_index):
+    nvmlInit()
+    handle = nvmlDeviceGetHandleByIndex(device_index)
+    info = nvmlDeviceGetMemoryInfo(handle)
+    print(f"GPU memory occupied: {info.used // 1024 ** 2} MB.")
+    return info.used // 1024 ** 2
+
+
+def seed_everything(seed):
+    r"""Sets the seed for generating random numbers in PyTorch, numpy and
+        Python.
+
+        Args:
+            seed (int): The desired seed.
+        """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 class ASTNodeEncoder(torch.nn.Module):

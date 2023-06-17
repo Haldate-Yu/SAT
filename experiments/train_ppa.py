@@ -58,8 +58,8 @@ def load_args():
     parser.add_argument('--k-hop', type=int, default=2, help="number of layers for GNNs")
     parser.add_argument('--global-pool', type=str, default='mean', choices=['mean', 'cls', 'add'],
                         help='global pooling method')
-    parser.add_argument('--se', type=str, default="gnn", 
-            help='Extractor type: khopgnn, or gnn')
+    parser.add_argument('--se', type=str, default="gnn",
+                        help='Extractor type: khopgnn, or gnn')
 
     parser.add_argument('--aggr', type=str, default='add',
                         help='the aggregation operator to obtain nodes\' initial features [mean, max, add]')
@@ -159,7 +159,7 @@ def train_epoch(model, loader, criterion, optimizer, lr_scheduler, epoch, use_cu
     n_sample = len(loader.dataset)
     epoch_loss = running_loss / n_sample
     print('Train loss: {:.4f} time: {:.2f}s'.format(
-          epoch_loss, toc - tic))
+        epoch_loss, toc - tic))
     return epoch_loss
 
 
@@ -179,7 +179,7 @@ def eval_epoch(model, loader, criterion, use_cuda=False, split='Val'):
 
             output = model(data)
             loss = criterion(output, data.y.squeeze())
-            
+
             y_true.append(data.y.cpu())
             y_pred.append(output.argmax(dim=-1).view(-1, 1).cpu())
 
@@ -193,9 +193,9 @@ def eval_epoch(model, loader, criterion, use_cuda=False, split='Val'):
     epoch_loss = running_loss / n_sample
     evaluator = Evaluator(name=args.dataset)
     score = evaluator.eval({'y_pred': y_pred,
-                         'y_true': y_true})['acc']
+                            'y_true': y_true})['acc']
     print('{} loss: {:.4f} score: {:.4f} time: {:.2f}s'.format(
-          split, epoch_loss, score, toc - tic))
+        split, epoch_loss, score, toc - tic))
     return score, epoch_loss
 
 
@@ -205,7 +205,7 @@ def main():
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     print(args)
-    data_path = '../datasets'
+    data_path = '../data'
     num_edge_features = 7
 
     if args.not_extract_node_feature:
@@ -221,16 +221,14 @@ def main():
     split_idx = dataset.get_idx_split()
 
     train_dset = GraphDataset(dataset[split_idx['train']], degree=True,
-        k_hop=args.k_hop, se=args.se, use_subgraph_edge_attr=args.use_edge_attr,
-        return_complete_index=False)
+                              k_hop=args.k_hop, se=args.se, use_subgraph_edge_attr=args.use_edge_attr,
+                              return_complete_index=False)
 
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True)
-    print(len(train_dset))
-    print(train_dset[0])
 
     val_dset = GraphDataset(dataset[split_idx['valid']], degree=True,
-        k_hop=args.k_hop, se=args.se, use_subgraph_edge_attr=args.use_edge_attr,
-        return_complete_index=False)
+                            k_hop=args.k_hop, se=args.se, use_subgraph_edge_attr=args.use_edge_attr,
+                            return_complete_index=False)
     val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=False)
 
     abs_pe_encoder = None
@@ -251,7 +249,7 @@ def main():
     model = GraphTransformer(in_size=input_size,
                              num_class=dataset.num_classes,
                              d_model=args.dim_hidden,
-                             dim_feedforward=2*args.dim_hidden,
+                             dim_feedforward=2 * args.dim_hidden,
                              dropout=args.dropout,
                              num_heads=args.num_heads,
                              num_layers=args.num_layers,
@@ -278,13 +276,14 @@ def main():
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs - args.warmup)
 
     lr_steps = args.lr / (args.warmup * len(train_loader))
+
     def warmup_lr_scheduler(s):
         lr = s * lr_steps
         return lr
 
     test_dset = GraphDataset(dataset[split_idx['test']], degree=True,
-        k_hop=args.k_hop, se=args.se, use_subgraph_edge_attr=args.use_edge_attr,
-        return_complete_index=False)
+                             k_hop=args.k_hop, se=args.se, use_subgraph_edge_attr=args.use_edge_attr,
+                             return_complete_index=False)
     test_loader = DataLoader(test_dset, batch_size=args.batch_size, shuffle=False)
 
     if abs_pe_encoder is not None:
@@ -341,7 +340,7 @@ def main():
                        header=['value'], index_label='name')
         torch.save(
             {'args': args,
-            'state_dict': best_weights},
+             'state_dict': best_weights},
             args.outdir + '/model.pth')
 
 

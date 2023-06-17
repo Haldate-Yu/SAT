@@ -39,7 +39,7 @@ def seed_everything(seed):
 
 
 def results_to_file(args, test_acc, test_std,
-                    test_mse, test_mse_std,
+                    test_score, test_score_std,
                     total_time, total_time_std,
                     avg_time, avg_time_std):
     if not os.path.exists('./results/{}'.format(args.dataset)):
@@ -55,7 +55,7 @@ def results_to_file(args, test_acc, test_std,
                   "Encoder_Layers", "Hidden_Dims",
                   "Model_Params", "Memory_Usage(MB)",
                   "::::::::",
-                  "Abs_PE", "GNN_Extractor",
+                  "Abs_PE", "GNN_Extractor_Type",
                   "::::::::",
                   "test_acc/mae", "test_acc/mae_std",
                   "test_mse", "test_mse_std",
@@ -76,16 +76,18 @@ def results_to_file(args, test_acc, test_std,
         line = "{}, {}, {}, {}, {}, {}, {}, :::::::::, " \
                "{}, {}, :::::::::, " \
                "{:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}\n".format(
-            args.model_type, args.num_heads, args.batch_size,
+            "SAT", args.num_heads, args.batch_size,
             args.num_layers, args.dim_hidden,
             args.total_params, args.memory_usage,
             args.abs_pe, args.se,
             test_acc, test_std,
-            test_mse, test_mse_std,
+            test_score, test_score_std,
             total_time, total_time_std,
             avg_time, avg_time_std
         )
         f.write(line)
+    print("=" * 20)
+    print("Writing Results Done !!!")
 
 
 def dense_to_sparse_tensor(matrix):
