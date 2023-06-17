@@ -224,5 +224,6 @@ class TUUtil:
         dataset.get_idx_split = lambda: {"train": "train", "valid": "valid", "test": "test"}
         dataset.num_classes = num_tasks
         dataset.num_features = num_features
+        print("Dataset features: {}".format(num_features))
 
         return dataset

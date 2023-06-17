@@ -245,7 +245,7 @@ def main():
             utils.degree(data.edge_index[1], num_nodes=data.num_nodes) for data in train_dset])
     else:
         deg = None
-
+    print("in_size: {}".format(input_size))
     model = GraphTransformer(in_size=input_size,
                              num_class=dataset.num_classes,
                              d_model=args.dim_hidden,
@@ -266,7 +266,7 @@ def main():
                              in_embed=False,
                              edge_embed=False,
                              global_pool=args.global_pool,
-                             run_TUs=False)
+                             run_TUs=True)
     if args.use_cuda:
         model.cuda()
     args.total_params = count_parameters(model)
