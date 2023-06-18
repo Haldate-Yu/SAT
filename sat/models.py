@@ -83,8 +83,6 @@ class GraphTransformer(nn.Module):
             self.pooling = None
         self.use_global_pool = use_global_pool
 
-        self.run_TUs = kwargs['run_TUs']
-
         self.max_seq_len = max_seq_len
         if max_seq_len is None:
             self.classifier = nn.Sequential(
@@ -99,8 +97,6 @@ class GraphTransformer(nn.Module):
 
     def forward(self, data, return_attn=False):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-        if self.run_TUs is True:
-            x = x.unsqueeze(-1).float()
 
         node_depth = data.node_depth if hasattr(data, "node_depth") else None
 

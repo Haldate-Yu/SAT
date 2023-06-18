@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import copy
+import time
 import argparse
 import numpy as np
 import pandas as pd
@@ -14,7 +15,8 @@ from torch_geometric import datasets
 import torch_geometric.utils as utils
 from sat.models import GraphTransformer
 from sat.data import GraphDataset
-from sat.utils import count_parameters
+from sat.utils import add_zeros, extract_node_feature, seed_everything, count_parameters, print_gpu_utilization, \
+    results_to_file
 from sat.position_encoding import POSENCODINGS
 from sat.gnn_layers import GNN_TYPES
 from timeit import default_timer as timer
@@ -29,11 +31,11 @@ from utils import augment_edge, encode_y_to_arr, decode_arr_to_seq
 
 def load_args():
     parser = argparse.ArgumentParser(
-        description='Structure-Aware Transformer on OGBG-CODE2',
+        description='Structure-Aware Transformer on OGBG-HIV',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--seed', type=int, default=0,
                         help='random seed')
-    parser.add_argument('--dataset', type=str, default="ogbg-code2",
+    parser.add_argument('--dataset', type=str, default="ogbg-molhiv",
                         help='name of dataset')
     parser.add_argument('--num-heads', type=int, default=4, help="number of heads")
     parser.add_argument('--num-layers', type=int, default=4, help="number of layers")
@@ -219,11 +221,10 @@ def eval_epoch(model, loader, criterion, evaluator, arr_to_seq, use_cuda=False, 
 def main():
     global args
     args = load_args()
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
-    print(args)
-    data_path = '../datasets'
-    num_edge_features = 2
+    seed_everything(args.seed)
+    data_path = '../../data'
+    # hiv
+    num_edge_features = 3
 
     dataset = PygGraphPropPredDataset(name=args.dataset, root=data_path)
     seq_len_list = np.array([len(seq) for seq in dataset.data.y])
@@ -344,14 +345,22 @@ def main():
     best_model = None
     best_epoch = 0
     logs = defaultdict(list)
+    t0 = time.time()
+    per_epoch_time = []
     start_time = timer()
     for epoch in range(args.epochs):
+        start = time.time()
         print("Epoch {}/{}, LR {:.6f}".format(epoch + 1, args.epochs, optimizer.param_groups[0]['lr']))
         train_loss = train_epoch(model, train_loader, criterion, optimizer, warmup_lr_scheduler, epoch, args.use_cuda)
         val_score, val_loss = eval_epoch(model, val_loader, criterion, evaluator, arr_to_seq, args.use_cuda,
                                          split='Val')
         test_score, test_loss = eval_epoch(model, test_loader, criterion, evaluator, arr_to_seq, args.use_cuda,
                                            split='Test')
+
+        # memory usage
+        if epoch == 1:
+            mem = print_gpu_utilization(args.device_id)
+            args.memory_usage = mem
 
         if epoch >= args.warmup and lr_scheduler is not None:
             lr_scheduler.step()
@@ -364,8 +373,11 @@ def main():
             best_val_loss = val_loss
             best_epoch = epoch
             best_weights = copy.deepcopy(model.state_dict())
+        per_epoch_time.append(time.time() - start)
 
     total_time = timer() - start_time
+    total_time_taken = time.time() - t0
+    avg_time_epoch = np.mean(per_epoch_time)
     print("best epoch: {} best val score: {:.4f}".format(best_epoch, best_val_score))
     model.load_state_dict(best_weights)
 
@@ -374,7 +386,7 @@ def main():
     test_score, test_loss = eval_epoch(model, test_loader, criterion, evaluator, arr_to_seq, args.use_cuda,
                                        split='Test')
 
-    print("test auROC {:.4f}".format(test_score))
+    print("test Score {:.4f}".format(test_score))
 
     if args.save_logs:
         logs = pd.DataFrame.from_dict(logs)
@@ -395,6 +407,22 @@ def main():
              'state_dict': best_weights},
             args.outdir + '/model.pth')
 
+    return test_score, test_loss, best_val_loss, total_time_taken, avg_time_epoch
+
 
 if __name__ == "__main__":
-    main()
+    test_scores, test_losses, vals, total_time_list, avg_time_list = [], [], [], [], []
+    for run_id in range(5):
+        test_score, test_loss, val, total_time, avg_time = main()
+
+        test_scores.append(test_score)
+        test_losses.append(test_loss)
+        vals.append(val)
+        total_time_list.append(total_time)
+        avg_time_list.append(avg_time)
+
+    args = load_args()
+    results_to_file(args, np.mean(test_scores), np.std(test_scores),
+                    np.mean(test_losses), np.std(test_losses),
+                    np.mean(total_time_list), np.std(total_time_list),
+                    np.mean(avg_time_list), np.std(avg_time_list))

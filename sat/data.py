@@ -175,6 +175,7 @@ class NormalizedDegree(object):
         data.x = deg.view(-1, 1)
         return data
 
+
 class FeatureUnsqueeze(object):
     def __init__(self):
         pass
@@ -183,10 +184,12 @@ class FeatureUnsqueeze(object):
         data.x = data.x.unsqueeze(-1).float()
         return data
 
+
 class TUUtil:
     @staticmethod
     def preprocess(dataset):
         if dataset.data.x is None:
+            #  print('features are None!')
             max_degree = 0
             degs = []
             for data in dataset:
@@ -224,6 +227,5 @@ class TUUtil:
         dataset.get_idx_split = lambda: {"train": "train", "valid": "valid", "test": "test"}
         dataset.num_classes = num_tasks
         dataset.num_features = num_features
-        print("Dataset features: {}".format(num_features))
 
         return dataset

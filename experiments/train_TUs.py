@@ -205,7 +205,7 @@ def main():
     num_edge_features = 0
 
     if args.not_extract_node_feature:
-        transform = add_zeros
+        transform = None
     else:
         from functools import partial
         transform = partial(extract_node_feature, reduce=args.aggr)
@@ -265,8 +265,7 @@ def main():
                              deg=deg,
                              in_embed=False,
                              edge_embed=False,
-                             global_pool=args.global_pool,
-                             run_TUs=True)
+                             global_pool=args.global_pool)
     if args.use_cuda:
         model.cuda()
     args.total_params = count_parameters(model)
