@@ -196,9 +196,10 @@ def eval_epoch(model, loader, criterion, use_cuda=False, split='Val'):
     return score, epoch_loss
 
 
-def main():
+def main(run_id=0):
     global args
     args = load_args()
+    args.seed = run_id
     seed_everything(args.seed)
     data_path = '../../data'
     # for TU Datasets
@@ -269,6 +270,7 @@ def main():
     if args.use_cuda:
         model.cuda()
     args.total_params = count_parameters(model)
+    print('total_params: {}'.format(args.total_params))
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -306,7 +308,7 @@ def main():
         test_score, test_loss = eval_epoch(model, test_loader, criterion, args.use_cuda, split='Test')
         # memory usage
         if epoch == 1:
-            mem = print_gpu_utilization(args.device_id)
+            mem = print_gpu_utilization(0)
             args.memory_usage = mem
 
         if epoch >= args.warmup:
@@ -352,13 +354,15 @@ def main():
             {'args': args,
              'state_dict': best_weights},
             args.outdir + '/model.pth')
-    return test_score, test_loss, best_val_loss, total_time_taken, avg_time_epoch
+    return test_score, test_loss, best_val_loss, total_time_taken, avg_time_epoch, args.total_params, args.memory_usage
 
 
 if __name__ == "__main__":
     test_scores, test_losses, vals, total_time_list, avg_time_list = [], [], [], [], []
+    total_params, memory = 0, 0
+
     for run_id in range(10):
-        test_score, test_loss, val, total_time, avg_time = main()
+        test_score, test_loss, val, total_time, avg_time, total_params, memory = main(run_id)
 
         test_scores.append(test_score)
         test_losses.append(test_loss)
@@ -367,6 +371,7 @@ if __name__ == "__main__":
         avg_time_list.append(avg_time)
 
     args = load_args()
+    args.total_params, args.memory_usage = total_params, memory
     results_to_file(args, np.mean(test_scores), np.std(test_scores),
                     np.mean(test_losses), np.std(test_losses),
                     np.mean(total_time_list), np.std(total_time_list),

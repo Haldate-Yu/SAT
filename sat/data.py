@@ -206,7 +206,6 @@ class TUUtil:
                 mean, std = deg.mean().item(), deg.std().item()
                 dataset.transform = T.Compose([
                     NormalizedDegree(mean, std),
-                    # FeatureUnsqueeze(),
                 ])
 
         num_tasks = dataset.num_classes
