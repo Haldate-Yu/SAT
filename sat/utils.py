@@ -41,7 +41,8 @@ def seed_everything(seed):
 def results_to_file(args, test_acc, test_std,
                     test_score, test_score_std,
                     total_time, total_time_std,
-                    avg_time, avg_time_std):
+                    avg_time, avg_time_std,
+                    test_time, test_time_std):
     if not os.path.exists('./results/{}'.format(args.dataset)):
         print("=" * 20)
         print("Creating Results File !!!")
@@ -60,7 +61,8 @@ def results_to_file(args, test_acc, test_std,
                   "test_acc/mae", "test_acc/mae_std",
                   "test_mse", "test_mse_std",
                   "total_time", "total_time_std",
-                  "avg_time", "avg_time_std"]
+                  "avg_time", "avg_time_std",
+                  "test_time", "test_time_std"]
 
     with open(filename, "a+") as f:
 
@@ -75,7 +77,7 @@ def results_to_file(args, test_acc, test_std,
 
         line = "{}, {}, {}, {}, {}, {}, {}, :::::::::, " \
                "{}, {}, :::::::::, " \
-               "{:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}\n".format(
+               "{:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}, {:.4f}\n".format(
             "SAT", args.num_heads, args.batch_size,
             args.num_layers, args.dim_hidden,
             args.total_params, args.memory_usage,
@@ -83,7 +85,8 @@ def results_to_file(args, test_acc, test_std,
             test_acc, test_std,
             test_score, test_score_std,
             total_time, total_time_std,
-            avg_time, avg_time_std
+            avg_time, avg_time_std,
+            test_time, test_time_std
         )
         f.write(line)
     print("=" * 20)

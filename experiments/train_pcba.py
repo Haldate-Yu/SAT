@@ -218,10 +218,10 @@ def eval_epoch(model, loader, criterion, evaluator, arr_to_seq, use_cuda=False, 
     return score, epoch_loss
 
 
-def main():
+def main(run_id):
     global args
     args = load_args()
-    seed_everything(args.seed)
+    seed_everything(args.seed + run_id)
     data_path = '../../data'
     # pcba
     num_edge_features = 3
@@ -248,24 +248,18 @@ def main():
     nodetypes_mapping = pd.read_csv(os.path.join(dataset.root, 'mapping', 'typeidx2type.csv.gz'))
     nodeattributes_mapping = pd.read_csv(os.path.join(dataset.root, 'mapping', 'attridx2attr.csv.gz'))
 
-    print(nodeattributes_mapping)
-
     filter_mask = np.array([dataset[i].num_nodes for i in split_idx['train']]) <= 1000
     train_dset = GraphDataset(dataset[split_idx['train'][filter_mask]], degree=True,
                               k_hop=args.k_hop, se=args.se, use_subgraph_edge_attr=args.use_edge_attr,
                               return_complete_index=False)
 
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True)
-    print(len(train_dset))
-    print(train_dset[0])
 
     filter_mask = np.array([dataset[i].num_nodes for i in split_idx['valid']]) <= 1000
     val_dset = GraphDataset(dataset[split_idx['valid'][filter_mask]], degree=True,
                             k_hop=args.k_hop, se=args.se, use_subgraph_edge_attr=args.use_edge_attr,
                             return_complete_index=False)
     val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=False)
-    print(np.sum(filter_mask))
-    print(len(split_idx['valid']))
 
     abs_pe_encoder = None
     if args.abs_pe and args.abs_pe_dim > 0:
@@ -280,7 +274,6 @@ def main():
             utils.degree(data.edge_index[1], num_nodes=data.num_nodes) for data in train_dset])
     else:
         deg = None
-    print(deg)
 
     node_encoder = ASTNodeEncoder(
         args.dim_hidden,
@@ -312,6 +305,7 @@ def main():
                              global_pool=args.global_pool)
     if args.use_cuda:
         model.cuda()
+    args.total_params = count_parameters(model)
     print("Total number of parameters: {}".format(count_parameters(model)))
 
     arr_to_seq = lambda arr: decode_arr_to_seq(arr, idx2vocab)
@@ -383,8 +377,10 @@ def main():
 
     print()
     print("Testing...")
+    t_test_start = time.time()
     test_score, test_loss = eval_epoch(model, test_loader, criterion, evaluator, arr_to_seq, args.use_cuda,
                                        split='Test')
+    test_time = time.time() - t_test_start
 
     print("test Score {:.4f}".format(test_score))
 
@@ -407,22 +403,24 @@ def main():
              'state_dict': best_weights},
             args.outdir + '/model.pth')
 
-    return test_score, test_loss, best_val_loss, total_time_taken, avg_time_epoch
+    return test_score, test_loss, best_val_loss, total_time_taken, avg_time_epoch, test_time
 
 
 if __name__ == "__main__":
-    test_scores, test_losses, vals, total_time_list, avg_time_list = [], [], [], [], []
+    test_scores, test_losses, vals, total_time_list, avg_time_list, test_time_list = [], [], [], [], [], []
     for run_id in range(5):
-        test_score, test_loss, val, total_time, avg_time = main()
+        test_score, test_loss, val, total_time, avg_time, test_time = main(run_id)
 
         test_scores.append(test_score)
         test_losses.append(test_loss)
         vals.append(val)
         total_time_list.append(total_time)
         avg_time_list.append(avg_time)
+        test_time_list.append(test_time)
 
     args = load_args()
     results_to_file(args, np.mean(test_scores), np.std(test_scores),
                     np.mean(test_losses), np.std(test_losses),
                     np.mean(total_time_list), np.std(total_time_list),
-                    np.mean(avg_time_list), np.std(avg_time_list))
+                    np.mean(avg_time_list), np.std(avg_time_list),
+                    np.mean(test_time_list), np.std(test_time_list))
